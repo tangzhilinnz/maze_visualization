@@ -1319,14 +1319,22 @@ async function initSolver() {
 }
 
 async function loadMaze(key) {
+    // 1. Update Button Visuals
     document.querySelectorAll('#size-btns button').forEach(b => b.classList.remove('active'));
-    // Highlight clicked (simple logic for now, hardcoded active in HTML for init)
+    // (Optional: You can add logic here to add .active to the specific button clicked)
 
+    // 2. Update the Text Label
+    const sizeEl = document.getElementById('size-label');
+    if (sizeEl) {
+        sizeEl.textContent = "Size: " + key;
+    }
+
+    // 3. Load Data
     appState.currentMazeKey = key;
     try {
         await maze.Load(MAZE_FILES[key]);
 
-        // Visual Settings
+        // Visual Settings based on size
         if (maze.width >= 200) { appState.wall_thickness = 1; appState.inset = 0; }
         else if (maze.width >= 100) { appState.wall_thickness = 1; appState.inset = 1; }
         else { appState.wall_thickness = 2; appState.inset = 2; }
@@ -1377,7 +1385,7 @@ function draw() {
             const fillX = x + inset;
             const fillY = y + inset;
 
-            // Flags
+            // --- Flag Extraction ---
             const is_path = (val & InternalBit.PATH_BIT);
             const is_visited = (val & InternalBit.VISITED_BIT);
             const on_stack = (val & InternalBit.ON_STACK_BIT);
@@ -1386,46 +1394,59 @@ function draw() {
 
             let color = null;
 
-            if (is_path) color = COLOR_PATH;
+            // --- COLOR PRIORITY LOGIC ---
+
+            // 1. Path (Highest Priority - Green)
+            // Even if a thread "owns" this cell, if it's part of the final path, show Green.
+            if (is_path) {
+                color = COLOR_PATH;
+            }
+            // 2. MT_M1 Pruned Cells
             else if (appState.algorithm === 'MT_M1' && is_pruned) {
                 const tid = maze.getThreadOwner(pos);
                 color = PRUNE_COLORS[tid] || COLOR_DEAD;
             }
-            else if (is_dead_junction) color = COLOR_DEAD;
+            // 3. Dead Junctions (Grey)
+            else if (is_dead_junction) {
+                color = COLOR_DEAD;
+            }
+            // 4. Active Junctions (Yellow)
             else if (maze.isJunction(pos) && (is_visited || on_stack || (val & (InternalBit.VISITED_TB | InternalBit.VISITED_BT)))) {
                 color = COLOR_JUNCTION;
             }
-            // MT_M1 Coloring
+            // 5. MT_M1 Team Colors
             else if (appState.algorithm === 'MT_M1') {
                 if (val & InternalBit.VISITED_TB) color = "#32CD32"; // Lime
                 else if (val & InternalBit.VISITED_BT) color = "#FFD700"; // Gold
                 else if (val & InternalBit.VISITED_BIT) color = COLOR_VISITED;
             }
-            // MT_M2 Coloring
+            // 6. MT_M2 Team Colors
             else if (appState.algorithm === 'MT_M2') {
                 const tid = maze.getThreadOwner(pos);
+                // Check thread flags
                 if ((val & InternalBit.VISITED_TB) || (val & InternalBit.VISITED_BT)) {
                     color = THREAD_COLORS[tid] || "#999";
                 } else if (val & InternalBit.VISITED_BIT) {
                     color = COLOR_VISITED;
                 }
             }
-            // DFS
+            // 7. DFS
             else if (appState.algorithm === 'DFS') {
                 if (on_stack) color = COLOR_DFS_PATH;
                 else if (is_visited) color = COLOR_VISITED;
             }
-            // BFS
+            // 8. BFS
             else if (is_visited) {
                 color = (appState.algorithm === 'BFS') ? COLOR_BFS_VISITED : COLOR_VISITED;
             }
 
+            // Draw Cell Background
             if (color) {
                 ctx.fillStyle = color;
                 ctx.fillRect(fillX, fillY, fw, fh);
             }
 
-            // Walls
+            // Draw Walls
             ctx.fillStyle = COLOR_WALL;
             if (val & InternalBit.EAST_BIT) {
                 ctx.fillRect(x + w - wt, y, wt, h);
